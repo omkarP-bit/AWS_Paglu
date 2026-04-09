@@ -15,16 +15,21 @@ function Navigation({ user, handleLogout }) {
   if (!user) return null; // No nav if not logged in
   
   return (
-    <nav className="navbar" style={{ borderBottom: '2px solid var(--accent-green)' }}>
-      <Link to="/" className="brand" style={{ color: 'var(--accent-green)', letterSpacing: '-0.5px' }}>
-        <HeartPulse color="var(--accent-green)" size={28} />
+    <nav className="navbar" style={{ borderBottom: '1px solid rgba(16, 185, 129, 0.2)', backgroundColor: 'rgba(255, 255, 255, 0.9)', backdropFilter: 'blur(10px)' }}>
+      <Link to="/" className="brand" style={{ color: 'var(--accent-green)', letterSpacing: '-0.75px', fontSize: '1.75rem' }}>
+        <HeartPulse color="var(--accent-green)" size={32} />
         LifeMatch
       </Link>
       <div className="nav-links">
-        <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginRight: '1rem' }}>
-          Role: <span style={{ textTransform: 'capitalize', fontWeight: 'bold' }}>{user.role}</span>
-        </span>
-        <button onClick={handleLogout} className="btn btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', marginRight: '1.5rem' }}>
+          <span style={{ fontSize: '0.875rem', fontWeight: 'bold', color: 'var(--text-primary)', textTransform: 'capitalize' }}>
+            {user.role} Dashboard
+          </span>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+            {user.email}
+          </span>
+        </div>
+        <button onClick={handleLogout} className="btn btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1.25rem', borderRadius: '9999px' }}>
           <LogOut size={16} /> Logout
         </button>
       </div>
@@ -86,6 +91,14 @@ function App() {
           <Route path="/" element={getDashboard()} />
         </Routes>
       </div>
+
+      <footer style={{ marginTop: 'auto', padding: '2rem', textAlign: 'center', backgroundColor: '#ffffff', borderTop: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+          <HeartPulse size={20} color="var(--accent-green)" />
+          <span style={{ fontWeight: 'bold', letterSpacing: '-0.5px', color: 'var(--text-primary)' }}>LifeMatch Systems Inc.</span>
+        </div>
+        <p style={{ fontSize: '0.875rem' }}>Deterministic algorithmic medical routing.</p>
+      </footer>
 
       {notification && (
         <div className="notification-toast">

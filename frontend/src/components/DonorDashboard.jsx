@@ -11,7 +11,10 @@ function DonorDashboard({ user }) {
 
   const fetchData = async () => {
     try {
-      const response = await axios.get(`http://${window.location.hostname}:8000/api/dashboard-data`);
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`http://${window.location.hostname}:8000/api/dashboard-data`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       setData(response.data);
     } catch (error) {
       if (error.response?.status === 401) window.location.reload();
