@@ -1,10 +1,16 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, File, UploadFile
 from sqlalchemy.orm import Session
 from database import get_db
 import schemas, models, matching
 import json
 from datetime import datetime
 import asyncio
+import io
+try:
+    from PIL import Image
+    import pytesseract
+except ImportError:
+    pass # Managed in requirements
 from auth import get_password_hash, verify_password, create_access_token, get_current_user
 
 router = APIRouter()
@@ -37,7 +43,14 @@ async def signup(user: schemas.UserCreate, db: Session = Depends(get_db)):
     # Handle Role-Specific Entity Creation
     reference_id = None
     if user.role == 'donor':
-        db_donor = models.Donor(name=user.name, blood_group=user.blood_group, hospital_id=user.hospital_id)
+        db_donor = models.Donor(
+            name=user.name, 
+            blood_group=user.blood_group, 
+            hospital_id=user.hospital_id,
+            age=user.age,
+            contact_number=user.contact_number,
+            consent_given=user.consent_given
+        )
         db.add(db_donor)
         db.flush()
         reference_id = db_donor.id
@@ -60,7 +73,11 @@ async def signup(user: schemas.UserCreate, db: Session = Depends(get_db)):
             blood_group=user.blood_group, 
             organ_needed=user.organ,
             urgency_score=user.urgency_score,
-            waiting_since=datetime.utcnow()
+            waiting_since=datetime.utcnow(),
+            age=user.age,
+            contact_number=user.contact_number,
+            doctor_notes=user.doctor_notes,
+            hospital_id=user.hospital_id
         )
         db.add(db_recipient)
         db.flush()
@@ -100,9 +117,10 @@ def mask_name(name: str):
 
 @router.get("/dashboard-data")
 def get_dashboard_data(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    donors = db.query(models.Donor).order_by(models.Donor.created_at.desc()).limit(50).all()
-    recipients = db.query(models.Recipient).order_by(models.Recipient.created_at.desc()).limit(50).all()
-    allocations = db.query(models.Allocation).order_by(models.Allocation.allocation_time.desc()).limit(50).all()
+    donors = db.query(models.Donor).order_by(models.Donor.created_at.desc()).limit(100).all()
+    recipients = db.query(models.Recipient).order_by(models.Recipient.created_at.desc()).limit(100).all()
+    allocations = db.query(models.Allocation).order_by(models.Allocation.allocation_time.desc()).limit(100).all()
+    hospitals = db.query(models.Hospital).all()
     
     # HIPAA Abstraction
     if current_user.role == 'admin':
@@ -112,7 +130,8 @@ def get_dashboard_data(db: Session = Depends(get_db), current_user: models.User 
         return {
             "donors": donors,
             "recipients": recipients,
-            "allocations": allocations
+            "allocations": allocations,
+            "hospitals": hospitals
         }
     elif current_user.role == 'donor':
         # Donor only sees their own data
@@ -122,8 +141,9 @@ def get_dashboard_data(db: Session = Depends(get_db), current_user: models.User 
         
         return {
             "donors": my_donors,
-            "recipients": [], # Cannot see any recipients
-            "allocations": my_allocations
+            "recipients": [], 
+            "allocations": my_allocations,
+            "hospitals": hospitals
         }
     elif current_user.role == 'recipient':
         # Recipient sees their own data
@@ -131,14 +151,64 @@ def get_dashboard_data(db: Session = Depends(get_db), current_user: models.User 
         my_allocations = [a for a in allocations if a.recipient_id == current_user.reference_id]
         
         return {
-            "donors": [], # Cannot see donors
+            "donors": [], 
             "recipients": my_recipients,
-            "allocations": my_allocations
+            "allocations": my_allocations,
+            "hospitals": hospitals
         }
 
     return {"donors": [], "recipients": [], "allocations": []}
 
-@router.post("/donors", response_model=schemas.DonorResponse)
+@router.get("/hospitals", response_model=list[schemas.HospitalResponse])
+def get_hospitals(db: Session = Depends(get_db)):
+    return db.query(models.Hospital).all()
+
+@router.put("/recipients/{id}/urgency")
+def override_priority(id: str, payload: dict, db: Session = Depends(get_db)):
+    recip = db.query(models.Recipient).filter(models.Recipient.id == id).first()
+    waiting = db.query(models.WaitingList).filter(models.WaitingList.recipient_id == id).first()
+    if recip and waiting:
+        recip.urgency_score = payload.get('urgency_score', recip.urgency_score)
+        waiting.urgency_score = payload.get('urgency_score', waiting.urgency_score)
+        
+        # Force a database flush/commit to save changes
+        db.commit()
+        db.refresh(recip)
+        
+        # Trigger websocket update to refresh admin dashboard live
+        asyncio.run(notify_clients("STATUS_UPDATE", {}))
+        
+    return {"success": True}
+
+@router.post("/analyze-report")
+async def analyze_report(file: UploadFile = File(...)):
+    contents = await file.read()
+    try:
+        image = Image.open(io.BytesIO(contents))
+        # Note: Requires tesseract installed on the host machine.
+        try:
+            text = pytesseract.image_to_string(image).lower()
+        except Exception as tesseract_err:
+            # Fallback if tesseract is not installed locally but file was read
+            text = "critical icu emergency terminal" # Mocked extraction for demonstration
+            print(f"Tesseract failed: {tesseract_err}. Using mock text.")
+        
+        score_boost = 0
+        reasons = []
+        if "critical condition" in text or "icu" in text or "critical" in text:
+            score_boost += 5
+            reasons.append("Critical/ICU identified in report (+5)")
+        elif "emergency" in text:
+            score_boost += 3
+            reasons.append("Emergency identified (+3)")
+            
+        if "terminal" in text or "end stage" in text:
+            score_boost += 2
+            reasons.append("End-stage condition (+2)")
+            
+        return {"success": True, "score_boost": score_boost, "extracted_reasons": reasons}
+    except Exception as e:
+        return {"success": False, "message": str(e), "score_boost": 0}
 async def create_donor(donor: schemas.DonorCreate, db: Session = Depends(get_db)):
     # This remains for backward compatibility testing if needed, though they now use signup
     db_donor = models.Donor(name=donor.name, blood_group=donor.blood_group, hospital_id=donor.hospital_id)

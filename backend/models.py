@@ -5,6 +5,13 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from database import Base
 
+class Hospital(Base):
+    __tablename__ = "hospitals"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String)
+    location = Column(String)
+    created_at = Column(DateTime, server_default=func.now())
+
 class User(Base):
     __tablename__ = "users"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -19,11 +26,15 @@ class Donor(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String)
     blood_group = Column(String(3), nullable=False)
-    hospital_id = Column(String)
+    hospital_id = Column(UUID(as_uuid=True), ForeignKey('hospitals.id'))
+    age = Column(Integer)
+    contact_number = Column(String(20))
+    consent_given = Column(Boolean, default=False)
     created_at = Column(DateTime, server_default=func.now())
     status = Column(String(20), default="active")
 
     organs = relationship("Organ", back_populates="donor", cascade="all, delete-orphan")
+    hospital = relationship("Hospital")
 
 class Organ(Base):
     __tablename__ = "organs"
@@ -45,8 +56,16 @@ class Recipient(Base):
     waiting_since = Column(DateTime, nullable=False)
     status = Column(String(20), default="waiting")
     created_at = Column(DateTime, server_default=func.now())
+    
+    # New Fields
+    age = Column(Integer)
+    contact_number = Column(String(20))
+    medical_report_url = Column(String)
+    doctor_notes = Column(String)
+    hospital_id = Column(UUID(as_uuid=True), ForeignKey('hospitals.id'))
 
     waiting_entry = relationship("WaitingList", back_populates="recipient", uselist=False, cascade="all, delete-orphan")
+    hospital = relationship("Hospital")
 
 class WaitingList(Base):
     __tablename__ = "waiting_list"
