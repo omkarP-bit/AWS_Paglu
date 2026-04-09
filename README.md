@@ -1,227 +1,99 @@
-# 🫀 Real-Time Organ Donation Match & Allocation System
+# 🫀 LifeMatch: Real-Time Organ Donation Allocation Engine
 
-A **critical event-driven healthcare system** that enables real-time, rule-based organ allocation between donors and recipients, ensuring **fairness, urgency prioritization, and atomic consistency**.
-
----
-
-## 🚨 Problem Statement
-
-Organ transplantation is highly time-sensitive. Delays or incorrect matching can lead to life-threatening consequences. Hospitals require systems that ensure:
-
-- Instant donor-recipient matching  
-- Strict adherence to medical compatibility rules  
-- Fair and transparent allocation  
-- Real-time notifications and monitoring  
+**LifeMatch** is a highly deterministic, deeply secure, real-time medical triage platform designed to instantly and fairly allocate life-saving organs using absolute rule-based criteria, zero-trust HIPAA architecture, and scalable asynchronous AWS notification workflows.
 
 ---
 
-## 🎯 Objective
+## 🚀 Unique Selling Propositions (USPs) & Innovations
 
-Build a **real-time allocation system** that:
+### 1. Atomic Match Transactions (`Row-Level Locking`)
+Organ transplantation implies zero-tolerance for race conditions. If two compatible recipients query at the same millisecond, standard queues break. LifeMatch leverages explicit SQL `SELECT ... FOR UPDATE SKIP LOCKED` natively within its FastAPI allocation transaction. When a donor registers, the target waitlist row is exclusively locked, ensuring 100% duplicate-allocation immunity.
 
-- Matches donors with compatible recipients instantly  
-- Applies strict rule-based medical logic (NO ML)  
-- Prioritizes recipients based on urgency and waiting time  
-- Ensures **atomic allocation (no duplicates)**  
-- Sends real-time alerts  
-- Provides a live dashboard  
+### 2. Intelligent Live OCR Priority Escalation
+Rather than relying solely on manually selected priority levels, patients submit their clinical Medical Reports directly in the UI. LifeMatch executes an in-memory extraction using `pytesseract`. Upon detecting trigger words like *"Emergency"*, *"Terminal"*, or *"ICU"*, it mathematically bounds the patient's algorithmic Urgency Score up to 5 points higher—saving administrative triage time. The uploaded file is subsequently instantly dropped to prevent Local PII retention.
 
----
+### 3. Asymmetric Role-Based Data Abstraction (HIPAA Native)
+The React architecture operates on a Zero-Trust principle powered by JWT encoding. 
+- **Recipients** see an algorithmic ranking of their personal position in the global queue but are entirely sandboxed from viewing physical Donor details or other patients. 
+- **Donors** track exactly when their "Gift of Life" goes from Active to matching but witness no recipient identifiers.
+- **Admins** have a Master "Glass-Box" dashboard providing omniscient control, wherein all PII strings are strictly masked natively by the backend (`J*** ***n`) to assure ultimate compliance.
 
-## 🧠 Key Features
+### 4. Direct Match Explainability!
+Opaque algorithms frighten health networks. Inside the Admin Dashboard, LifeMatch evaluates its internally dumped Match JSON (stored safely stringified in PostgreSQL) to output explicit English logs mapping *why* someone received an organ (e.g., *"Matched Organ: Heart due to O+ blood compatibility and Max Urgency Profiling."*)
 
-### 🔹 Rule-Based Matching Engine
-- Organ type matching  
-- Blood group compatibility  
-- Deterministic selection logic  
-
-### 🔹 Priority-Based Allocation
-- Higher urgency → higher priority  
-- Tie-breaker → longer waiting time  
-
-### 🔹 Atomic Allocation
-- Uses database transactions  
-- Prevents duplicate organ assignment  
-- Concurrency-safe (`FOR UPDATE SKIP LOCKED`)  
-
-### 🔹 Real-Time Notifications
-- Trigger alerts immediately after allocation  
-
-### 🔹 Audit Logging
-- Tracks every action for transparency  
-- Explainable allocation decisions  
+### 5. Instant Master Override Authority
+Medical realities change faster than algorithms. The Admin features an `Emergency Override` panel that force-mutates a Patient's urgency score to absolute priority (Level 10) through a dedicated HTTP PUT call, instantly bumping them to the top of all physical arrays across the system simultaneously and firing WebSocket GUI updates to notify connected regional boards.
 
 ---
 
-## 🏗️ System Architecture
+## 🛠️ Architecture & Tech Stack
 
-```
-Frontend (React)
-        ↓
-FastAPI Backend (API Layer)
-        ↓
-SQLAlchemy ORM
-        ↓
-PostgreSQL (RDS / Local)
-```
+*   **Backend Engine**: Python FastAPI, strictly typed Pydantic
+*   **Database ORM**: SQLAlchemy 2.0 with asynchronous bindings via core Psycopg
+*   **Cloud Operations**: AWS SNS (Simple Notification Services) + SQS for high-availability alerts.
+*   **Real-time Handlers**: FastAPI WebSockets
+*   **Security Context**: Bcrypt hashing & PyJWT Auth Headers
+*   **Frontend Ecosystem**: React.js / Vite using pure CSS / Lucide-React icon kits.
 
 ---
 
-## 🛠️ Tech Stack
+## 🗄️ Core Database Schema 
 
-| Layer        | Technology        |
-|-------------|-----------------|
-| Backend      | FastAPI         |
-| Database     | PostgreSQL      |
-| ORM          | SQLAlchemy      |
-| Frontend     | React           |
-| Deployment   | AWS (EC2, RDS, S3) |
+The system executes against a high-integrity relational PostgreSQL Database consisting of decoupled domains:
 
----
+### 1. Security & Hub Entities
+*   **`hospitals`**: 
+    *   `id` (UUID, Primary Key)
+    *   `name`: e.g., "City General"
+    *   `location`: String
+*   **`users`**: Central Auth table
+    *   `id` (UUID), `email` (PK), `hashed_password`
+    *   `role`: Enum (`admin`, `donor`, `recipient`)
+    *   `reference_id`: Links via UUID to either the physical `Donor` or `Recipient` tuple for isolated routing.
 
-## 🗄️ Database Design
+### 2. The Medical Actors
+*   **`donors`**: 
+    *   `id` (UUID), `name`, `blood_group`
+    *   `age`, `contact_number`, `consent_given` (Boolean Legal Hook)
+    *   `hospital_id` (FOREIGN KEY -> `hospitals.id`)
+*   **`recipients`**: 
+    *   `id` (UUID), `name`, `age`, `contact_number`, `medical_report_url`
+    *   `blood_group`, `organ_needed`, `urgency_score` (1-10 Dynamic int)
+    *   `hospital_id` (FOREIGN KEY -> `hospitals.id`)
+    *   `status`: Enum (`waiting`, `allocated`)
 
-### Core Tables
+### 3. Registration & Allocation Tracking
+*   **`organs`**:
+    *   `id` (UUID) 
+    *   `donor_id` (FOREIGN KEY -> `donors.id`)
+    *   `organ_type`: (`kidney`, `liver`, `heart`, `lungs`)
+    *   `status`: Enum (`active`, `allocated`, `withdrawn`)
+*   **`waiting_list`**: 
+    *   The atomic queue structure. Tracks `recipient_id`, `organ_needed`, `urgency_score`, and `waiting_since` (Timestamp) for index-searching.
+*   **`allocations`**:
+    *   The completed algorithmic lifecycle. 
+    *   `organ_id`, `recipient_id`, `allocation_time`
+    *   `match_score`: (JSON Payload providing AI matching Explainability properties).
 
-- **donors** → donor details  
-- **organs** → organ inventory  
-- **recipients** → patient details  
-- **waiting_list** → priority queue  
-- **allocations** → final assignments  
-- **notifications** → alert system  
-- **audit_logs** → system traceability  
-
----
-
-## ⚡ Allocation Logic (Core Algorithm)
-
-1. Donor enters system  
-2. Find compatible recipients:
-   - Organ type match  
-   - Blood group compatibility  
-3. Sort candidates:
-   - urgency_score DESC  
-   - waiting_since ASC  
-4. Lock rows (`FOR UPDATE SKIP LOCKED`)  
-5. Allocate organ atomically  
-6. Update system state  
-7. Send notification  
-
----
-
-## 🔒 Concurrency & Safety
-
-- PostgreSQL transactions ensure atomic operations  
-- Row-level locking prevents race conditions  
-- Unique constraints prevent duplicate allocation  
+### 4. Systems Operations
+*   **`blood_compatibility`**: Matrix mapping containing rules determining routing (`O-` gives to `ALL`, `A+` gives to `A+, AB+`, etc).
+*   **`audit_logs`**: Immutable store of all allocations to retain accountability during system analysis.
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Running Locally
 
-### 1. Clone the repo
-
-```bash
-git clone https://github.com/your-username/organ-allocation-system.git
-cd organ-allocation-system
-```
-
----
-
-### 2. Setup backend
-
-```bash
-pip install -r requirements.txt
-```
-
----
-
-### 3. Configure environment
-
-Create `.env` file:
-
-```env
-DATABASE_URL=postgresql://username:password@localhost:5432/organ_db
-```
-
----
-
-### 4. Run the server
-
-```bash
-uvicorn app.main:app --reload
-```
-
----
-
-### 5. Open API docs
-
-```
-http://127.0.0.1:8000/docs
-```
-
----
-
-## 📊 Sample API Endpoints
-
-| Endpoint | Description |
-|--------|------------|
-| GET /recipients | Get all recipients |
-| POST /donor | Add new donor |
-| POST /allocate | Trigger allocation |
-| GET /allocations | View allocations |
-
----
-
-## 🧪 Testing Scenario
-
-- Add donor (kidney, O+)  
-- System fetches compatible recipients  
-- Applies priority rules  
-- Allocates to highest priority patient  
-- Updates DB atomically  
-
----
-
-## 🌐 Deployment (AWS)
-
-- Backend → EC2  
-- Database → RDS (PostgreSQL)  
-- Frontend → S3 + CloudFront  
-
----
-
-## 🔥 What Makes This Unique
-
-- Fully **rule-based deterministic system**  
-- **No machine learning** → explainable decisions  
-- **Real-time + concurrency-safe design**  
-- **Production-grade DB modeling**  
-
----
-
-## 📈 Future Enhancements
-
-- WebSocket-based live dashboard  
-- Multi-hospital coordination  
-- Organ transport tracking  
-- AI-assisted prediction layer (optional)  
-
----
-
-## 👨‍💻 Contributors
-
-- Your Name  
-- Team Members  
-
----
-
-## 📜 License
-
-MIT License
-
----
-
-## 💡 Acknowledgment
-
-Built for **AI Cloudverse Hackathon** 🚀
+1. **Backend Initialization**:
+   ```bash
+   cd backend
+   pip install -r requirements.txt
+   python seed.py # (Injects mock Hospitals into DB)
+   uvicorn main:app --host 0.0.0.0 --port 8000
+   ```
+2. **Frontend UI**:
+   ```bash
+   cd frontend
+   npm install
+   npm run dev
+   ```
+*Access the Web Application at `http://localhost:5173/`.*
