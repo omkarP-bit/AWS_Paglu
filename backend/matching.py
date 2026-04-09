@@ -76,17 +76,17 @@ def run_matching_engine(db: Session, organ: Organ, donor: Donor):
             )
             db.add(audit_log)
             
-            # TODO: AWS SNS Integration (To be enabled in next phase)
-            # try:
-            #     import boto3
-            #     sns = boto3.client('sns', region_name='us-east-1')
-            #     sns.publish(
-            #         TopicArn='arn:aws:sns:REGION:ACCOUNT:OrganAllocationTopic',
-            #         Message=f"URGENT: Match Found for Organ ID {organ.id} to Recipient ID {recipient.id}",
-            #         Subject="Organ Allocation Alert"
-            #     )
-            # except Exception as sns_e:
-            #     logger.error(f"SNS publish failed: {sns_e}")
+            # Call separated SNS Service hook
+            try:
+                from sns_service import publish_allocation_event
+                publish_allocation_event({
+                    "organ_id": str(organ.id),
+                    "recipient_id": str(recipient.id),
+                    "organ_type": organ.organ_type,
+                    "message": f"URGENT: Match Found for {organ.organ_type}"
+                })
+            except Exception as sns_e:
+                logger.error(f"Failed to trigger sns_service hook: {sns_e}")
             
             # Return dict for frontend websocket
             return dict(organ_id=str(organ.id), recipient_id=str(recipient.id), match=True)
