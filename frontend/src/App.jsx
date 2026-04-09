@@ -1,33 +1,49 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
 import Dashboard from './components/Dashboard';
-import AddDonor from './components/AddDonor';
-import AddRecipient from './components/AddRecipient';
-import { HeartPulse, Bell } from 'lucide-react';
+import Login from './components/Login';
+import Signup from './components/Signup';
+import { HeartPulse, Bell, LogOut } from 'lucide-react';
+import axios from 'axios';
 
-function Navigation() {
+function Navigation({ user, handleLogout }) {
   const location = useLocation();
+  
+  if (!user) return null; // No nav if not logged in
   
   return (
     <nav className="navbar">
       <Link to="/" className="brand">
-        <HeartPulse color="#ef4444" size={28} />
+        <HeartPulse color="var(--accent-green)" size={28} />
         LifeMatch
       </Link>
       <div className="nav-links">
-        <Link to="/" className={`nav-link ${location.pathname === '/' ? 'active' : ''}`}>Dashboard</Link>
-        <Link to="/add-donor" className={`nav-link ${location.pathname === '/add-donor' ? 'active' : ''}`}>Register Donor</Link>
-        <Link to="/add-recipient" className={`nav-link ${location.pathname === '/add-recipient' ? 'active' : ''}`}>Waitlist Recipient</Link>
+        <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginRight: '1rem' }}>
+          Role: <span style={{ textTransform: 'capitalize', fontWeight: 'bold' }}>{user.role}</span>
+        </span>
+        <button onClick={handleLogout} className="btn btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem' }}>
+          <LogOut size={16} /> Logout
+        </button>
       </div>
     </nav>
   );
 }
 
 function App() {
+  const [token, setToken] = useState(localStorage.getItem('token'));
+  const [user, setUser] = useState(JSON.parse(localStorage.getItem('user')));
   const [notification, setNotification] = useState(null);
 
   useEffect(() => {
-    // Connect to WebSocket dynamically based on host
+    if (token) {
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    } else {
+      delete axios.defaults.headers.common['Authorization'];
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (!token) return;
     const wsUrl = `ws://${window.location.hostname}:8000/ws`;
     const ws = new WebSocket(wsUrl);
 
@@ -40,22 +56,29 @@ function App() {
     };
 
     return () => ws.close();
-  }, []);
+  }, [token]);
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    setToken(null);
+    setUser(null);
+  };
 
   return (
     <Router>
-      <Navigation />
+      <Navigation user={user} handleLogout={handleLogout} />
       <div className="container">
         <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/add-donor" element={<AddDonor />} />
-          <Route path="/add-recipient" element={<AddRecipient />} />
+          <Route path="/login" element={!token ? <Login setToken={setToken} setUser={setUser} /> : <Navigate to="/" />} />
+          <Route path="/signup" element={!token ? <Signup setToken={setToken} setUser={setUser} /> : <Navigate to="/" />} />
+          <Route path="/" element={token ? <Dashboard user={user} /> : <Navigate to="/login" />} />
         </Routes>
       </div>
 
       {notification && (
         <div className="notification-toast">
-          <Bell color="#10b981" />
+          <Bell color="var(--accent-green)" />
           <span>{notification}</span>
         </div>
       )}
