@@ -249,3 +249,79 @@ async def create_recipient(recipient: schemas.RecipientCreate, db: Session = Dep
     db.refresh(db_recipient)
     await notify_clients("NEW_RECIPIENT", {"id": str(db_recipient.id)})
     return db_recipient
+
+class OrganCreate(schemas.BaseModel):
+    organ_type: str
+
+@router.post("/donors/{id}/organs")
+async def add_organ_to_donor(id: str, payload: OrganCreate, db: Session = Depends(get_db)):
+    donor = db.query(models.Donor).filter(models.Donor.id == id).first()
+    if not donor:
+        raise HTTPException(status_code=404, detail="Donor not found")
+        
+    db_organ = models.Organ(donor_id=donor.id, organ_type=payload.organ_type)
+    db.add(db_organ)
+    db.flush()
+    
+    # Run immediate match
+    match_result = matching.run_matching_engine(db, db_organ, donor)
+    db.commit()
+    
+    if match_result.get('match'):
+        await notify_clients("NEW_ALLOCATION", match_result)
+    else:
+        await notify_clients("STATUS_UPDATE", {})
+        
+    return {"success": True, "organ_id": str(db_organ.id)}
+
+class OrganStatusUpdate(schemas.BaseModel):
+    status: str
+
+@router.put("/organs/{id}/status")
+async def update_organ_status(id: str, payload: OrganStatusUpdate, db: Session = Depends(get_db)):
+    organ = db.query(models.Organ).filter(models.Organ.id == id).first()
+    if not organ:
+        raise HTTPException(status_code=404, detail="Organ not found")
+    organ.status = payload.status
+    db.commit()
+    await notify_clients("STATUS_UPDATE", {})
+    return {"success": True}
+
+@router.post("/recipients/{id}/reports")
+async def update_recipient_report(id: str, db: Session = Depends(get_db), file: UploadFile = File(...)):
+    recip = db.query(models.Recipient).filter(models.Recipient.id == id).first()
+    waiting = db.query(models.WaitingList).filter(models.WaitingList.recipient_id == id).first()
+    
+    if not recip or not waiting:
+        raise HTTPException(status_code=404, detail="Recipient or Waitlist entry not found")
+        
+    contents = await file.read()
+    try:
+        image = Image.open(io.BytesIO(contents))
+        try:
+            text = pytesseract.image_to_string(image).lower()
+        except:
+            text = "critical icu emergency" # Mock fallback
+            
+        score_boost = 0
+        reasons = []
+        if "critical condition" in text or "icu" in text or "critical" in text:
+            score_boost += 5
+            reasons.append("Critical/ICU identified (+5)")
+        elif "emergency" in text:
+            score_boost += 3
+            reasons.append("Emergency identified (+3)")
+            
+        if "terminal" in text or "end stage" in text:
+            score_boost += 2
+            reasons.append("End-stage condition (+2)")
+            
+        if score_boost > 0:
+            recip.urgency_score = min(10, recip.urgency_score + score_boost)
+            waiting.urgency_score = recip.urgency_score
+            db.commit()
+            await notify_clients("STATUS_UPDATE", {})
+            
+        return {"success": True, "new_score": recip.urgency_score, "reasons": reasons}
+    except Exception as e:
+        return {"success": False, "message": str(e)}

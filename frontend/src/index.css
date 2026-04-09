@@ -96,14 +96,15 @@ body {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  padding: 0.75rem 1.5rem;
-  border-radius: 8px;
+  padding: 0.75rem 1.75rem;
+  border-radius: 9999px;
   font-weight: 600;
   font-size: 0.875rem;
   cursor: pointer;
-  transition: all 0.2s ease;
-  border: 1px solid transparent;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 2px solid transparent;
   outline: none;
+  box-shadow: var(--shadow-sm);
 }
 
 .btn-primary {
@@ -113,6 +114,8 @@ body {
 
 .btn-primary:hover {
   background-color: var(--accent-green-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
 }
 
 .btn-outline {
@@ -123,6 +126,7 @@ body {
 
 .btn-outline:hover {
   background-color: rgba(16, 185, 129, 0.1);
+  transform: translateY(-1px);
 }
 
 .form-group {
