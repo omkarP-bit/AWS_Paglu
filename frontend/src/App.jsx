@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
-import Dashboard from './components/Dashboard';
+import Home from './components/Home';
+import AdminDashboard from './components/AdminDashboard';
+import DonorDashboard from './components/DonorDashboard';
+import RecipientDashboard from './components/RecipientDashboard';
 import Login from './components/Login';
 import Signup from './components/Signup';
 import { HeartPulse, Bell, LogOut } from 'lucide-react';
@@ -12,8 +15,8 @@ function Navigation({ user, handleLogout }) {
   if (!user) return null; // No nav if not logged in
   
   return (
-    <nav className="navbar">
-      <Link to="/" className="brand">
+    <nav className="navbar" style={{ borderBottom: '2px solid var(--accent-green)' }}>
+      <Link to="/" className="brand" style={{ color: 'var(--accent-green)', letterSpacing: '-0.5px' }}>
         <HeartPulse color="var(--accent-green)" size={28} />
         LifeMatch
       </Link>
@@ -65,6 +68,14 @@ function App() {
     setUser(null);
   };
 
+  const getDashboard = () => {
+    if (!token) return <Home />;
+    if (user?.role === 'admin') return <AdminDashboard user={user} />;
+    if (user?.role === 'donor') return <DonorDashboard user={user} />;
+    if (user?.role === 'recipient') return <RecipientDashboard user={user} />;
+    return <Home />;
+  };
+
   return (
     <Router>
       <Navigation user={user} handleLogout={handleLogout} />
@@ -72,7 +83,7 @@ function App() {
         <Routes>
           <Route path="/login" element={!token ? <Login setToken={setToken} setUser={setUser} /> : <Navigate to="/" />} />
           <Route path="/signup" element={!token ? <Signup setToken={setToken} setUser={setUser} /> : <Navigate to="/" />} />
-          <Route path="/" element={token ? <Dashboard user={user} /> : <Navigate to="/login" />} />
+          <Route path="/" element={getDashboard()} />
         </Routes>
       </div>
 
