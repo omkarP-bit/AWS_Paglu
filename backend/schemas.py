@@ -3,6 +3,27 @@ from typing import Optional, List
 from datetime import datetime
 import uuid
 
+class UserCreate(BaseModel):
+    email: str
+    password: str
+    role: str # admin, donor, recipient
+    name: Optional[str] = None
+    blood_group: Optional[str] = None
+    organ: Optional[str] = None # organ_type or organ_needed
+    hospital_id: Optional[str] = None # For donor
+    urgency_score: Optional[int] = None # For recipient
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+    role: str
+    reference_id: Optional[str] = None
+    email: str
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
 class DonorCreate(BaseModel):
     name: str
     blood_group: str
